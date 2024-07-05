@@ -1,0 +1,77 @@
+### CentOS / RHEL / Fedora / Rocky Linux ###
+sudo yum -y install git wget curl vim bash-completion tmux
+sudo yum install epel-release
+sudo yum install ansible
+
+### Configuración Ansible ###
+vi /etc/ansible/hosts #agregar las ips de los servidores
+vi /etc/hosts
+ssh-keygen
+ssh-copy-id usuario@IPServidor #pasar a todos los servidores
+
+### Intalación de k8s ###
+git clone https://github.com/jmutai/k8s-pre-bootstrap.git
+cd k8s-pre-bootstrap
+$ vim hosts
+[k8snodes] #Nombre de cluster
+k8smaster  #Master
+k8snode01  #Nodo1
+k8snode02  #Nodo2
+
+### Playbook para instalar Kubernetes ###
+vim  k8s-prep.yml
+- name: Prepare Kubernetes Nodes for Cluster bootstrapping
+  hosts: k8snodes
+  remote_user: root
+  become: yes
+  become_method: sudo
+  #gather_facts: no
+  vars:
+    k8s_version: "1.29"                                  # Kubernetes version to be installed
+    selinux_state: permissive                            # SELinux state to be set on k8s nodes
+    timezone: "Africa/Nairobi"                           # Timezone to set on all nodes
+    k8s_cni: calico                                      # calico, flannel
+    container_runtime: cri-o                             # docker, cri-o, containerd
+    pod_network_cidr: "172.18.0.0/16"                    # pod subnet if using cri-o runtime
+    configure_firewalld: false                           # true / false (keep it false, k8s>1.19 have issues with firewalld)
+    # Docker proxy support
+    setup_proxy: false                                   # Set to true to configure proxy
+    proxy_server: "proxy.example.com:8080"               # Proxy server address and port
+    docker_proxy_exclude: "localhost,127.0.0.1"          # Adresses to exclude from proxy
+  roles:
+    - kubernetes-bootstrap
+
+
+### Revisión del servicio ssh ###
+/etc/ssh/sshd_config
+PermitRootLogin yes
+systemctl restart ssh
+passwd root
+
+### Ejecución de Playbook ###
+ssh (alias)
+ansible-playbook  --syntax-check -i hosts k8s-prep.yml
+eval `ssh-agent -s` && ssh-add
+ansible-playbook -i hosts k8s-prep.yml
+
+###  Revisión de servicios  ###
+systemctl status crio
+sysctl -p
+systemctl status firewalld
+#si el firewall esta activo listamos los puertos abiertos 
+firewall-cmd --list-all
+### respuesta del listado
+public (active)
+  target: default
+  icmp-block-inversion: no
+  interfaces: enp1s0
+  sources:
+  services: cockpit dhcpv6-client ssh
+  ports: 22/tcp 80/tcp 443/tcp 6443/tcp 2379-2380/tcp 10250/tcp 10251/tcp 10252/tcp 30000-32767/tcp 4789/udp 5473/tcp 179/tcp
+  protocols:
+  masquerade: no
+  forward-ports:
+  source-ports:
+  icmp-blocks:
+  rich rules:
+###
